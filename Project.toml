@@ -1,0 +1,13 @@
+name = "BetterFileWatching"
+uuid = "c9fd44ac-77b5-486c-9482-9798bd063cc6"
+authors = ["Fons van der Plas <fons@plutojl.org>"]
+version = "0.1.0"
+
+[deps]
+Deno_jll = "04572ae6-984a-583e-9378-9577a1c2574d"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+
+[compat]
+Deno_jll = "^1.10"
+JSON = "~0, ~1, ~2, ~3, ~3, ~4"
+julia = "1"
