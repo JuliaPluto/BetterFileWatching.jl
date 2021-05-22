@@ -17,6 +17,11 @@ struct Created <: FileEvent
     paths::Vector{String}
 end
 
+const mapFileEvent = Dict(
+    "modify" => Modified,
+    "create" => Created,
+    "remove" => Removed,
+)
 
 export watch_folder, Modified, Removed, Created, FileEvent
 
@@ -70,17 +75,13 @@ function watch_folder(on_event::Function, dir=".")
 
     function on_stdout(str)
         for s in split(str, "\n"; keepempty=false)
-            event = JSON.parse(s)
-
-            if event["kind"] == "modify"
-                Modified(String.(event["paths"]))
-            elseif event["kind"] == "create"
-                Created(String.(event["paths"]))
-            elseif event["kind"] == "remove"
-                Removed(String.(event["paths"]))
-            else
-                @error "Unrecognized event!" event
-            end |> on_event
+            try
+                event = JSON.parse(s)
+                T = mapFileEvent[event["kind"]]
+                T(String.(event["paths"])) |> on_event
+            catch e
+                @error "Unrecognized event!" event ex=(e,catch_backtrace())
+            end
         end
     end
 
@@ -96,12 +97,7 @@ function watch_folder(on_event::Function, dir=".")
         end
     end
     
-    try
-        wait(watch_task)
-    catch e
-        # @error "Oops" exception=(e,catch_backtrace())
-        
-    end
+    try wait(watch_task) catch; end
 end
 
 
@@ -113,7 +109,7 @@ function watch_folder(dir::String=".")::FileEvent
         schedule(task[], InterruptException(); error=true) 
     end
     wait(task[])    
-    return event[]
+    event[]
 end
 
-end # module
+end
