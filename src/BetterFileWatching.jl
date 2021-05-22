@@ -20,18 +20,6 @@ end
 
 export watch_folder, Modified, Removed, Created, FileEvent
 
-macro ignore_interrupt(x)
-    quote
-        try
-            $(esc(x))
-        catch e
-            if !(e isa InterruptException)
-                rethrow(e)
-            end
-        end
-    end
-end
-
 """
 ```julia
 watch_folder(f::Function, dir=".")
