@@ -23,7 +23,34 @@ const mapFileEvent = Dict(
     "remove" => Removed,
 )
 
-export watch_folder, Modified, Removed, Created, FileEvent
+export watch_folder, watch_file, Modified, Removed, Created, FileEvent
+
+function doc_examples(folder)
+    f = folder ? "folder" : "file"
+    args = folder ? "\".\"" : "\"file.txt\""
+    """
+    # Example
+
+    ```julia
+    watch_$(f)($(args)) do event
+        @info "Something changed!" event
+    end
+    ```
+
+    You can watch a $(f) asynchronously, and interrupt the task later:
+
+    ```julia
+    watch_task = @async watch_$(f)($(args)) do event
+        @info "Something changed!" event
+    end
+
+    sleep(5)
+
+    # stop watching the $(f)
+    schedule(watch_task, InterruptException(); error=true) 
+    ```
+    """
+end
 
 """
 ```julia
@@ -32,26 +59,9 @@ watch_folder(f::Function, dir=".")
 
 Watch a folder recursively for any changes. Includes changes to file contents. A [`FileEvent`](@ref) is passed to the callback function `f`.
 
-# Example
+Use the single-argument `watch_folder(dir::AbstractString=".")` to create a **blocking call** until the folder changes (like the FileWatching standard library).
 
-```julia
-watch_folder(".") do event
-    @info "Something changed!" event
-end
-```
-
-You can watch a folder asynchronously, and interrupt the task later:
-
-```julia
-watch_task = @async watch_folder(".") do event
-    @info "Something changed!" event
-end
-
-sleep(5)
-
-# stop watching the folder
-schedule(watch_task, InterruptException(); error=true) 
-```
+$(doc_examples(true))
 
 # Differences with the FileWatching stdlib
 
@@ -59,7 +69,7 @@ schedule(watch_task, InterruptException(); error=true)
 -   `BetterFileWatching.watch_folder` also watching file _contents_ for changes.
 -   BetterFileWatching.jl is based on [Deno.watchFs](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package.
 """
-function watch_folder(on_event::Function, dir=".")
+function watch_folder(on_event::Function, dir::AbstractString=".")
     script = """
         const watcher = Deno.watchFs($(JSON.json(dir)));
         for await (const event of watcher) {
@@ -101,7 +111,7 @@ function watch_folder(on_event::Function, dir=".")
 end
 
 
-function watch_folder(dir::String=".")::FileEvent
+function watch_folder(dir::AbstractString=".")::FileEvent
     event = Ref{FileEvent}()
     task = Ref{Task}()
     task[] = @async watch_folder(dir) do e
@@ -111,5 +121,24 @@ function watch_folder(dir::String=".")::FileEvent
     wait(task[])    
     event[]
 end
+
+
+"""
+```julia
+watch_file(f::Function, filename::AbstractString)
+```
+
+Watch a folderfile recursively for any changes. A [`FileEvent`](@ref) is passed to the callback function `f` when a change occurs.
+
+Use the single-argument `watch_file(filename::AbstractString)` to create a **blocking call** until the file changes (like the FileWatching standard library).
+
+$(doc_examples(false))
+
+# Differences with the FileWatching stdlib
+
+-   BetterFileWatching.jl is based on [Deno.watchFs](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package.
+"""
+watch_file(filename::AbstractString) = watch_folder(filename)
+watch_file(f::Function, filename::AbstractString) = watch_folder(f, filename)
 
 end
