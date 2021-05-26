@@ -85,13 +85,15 @@ function watch_folder(on_event::Function, dir::AbstractString=".")
 
     function on_stdout(str)
         for s in split(str, "\n"; keepempty=false)
-            try
-                event = JSON.parse(s)
-                T = mapFileEvent[event["kind"]]
-                T(String.(event["paths"])) |> on_event
+            local event_raw = nothing
+            event = try
+                event_raw = JSON.parse(s)
+                T = mapFileEvent[event_raw["kind"]]
+                T(String.(event_raw["paths"]))
             catch e
-                @error "Unrecognized event!" event ex=(e,catch_backtrace())
+                @error "Unrecognized event!" event_raw ex=(e,catch_backtrace())
             end
+            on_event(event)
         end
     end
 
