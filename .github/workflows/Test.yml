@@ -19,7 +19,7 @@ jobs:
         strategy:
             matrix:
                 julia-version: ["1.6"]
-                os: [ubuntu-latest, macOS-latest, windows-latests]
+                os: [ubuntu-latest, macOS-latest, windows-latest]
 
         steps:
             # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
