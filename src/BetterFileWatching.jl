@@ -73,7 +73,7 @@ $(_doc_examples(true))
 -   `BetterFileWatching.watch_folder` also watching file _contents_ for changes.
 -   BetterFileWatching.jl is based on [Deno.watchFs](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package.
 """
-function watch_folder(on_event::Function, dir::AbstractString="."; ignore_accessed::Bool=true)
+function watch_folder(on_event::Function, dir::AbstractString="."; ignore_accessed::Bool=true, ignore_dotgit::Bool=true)
     script = """
         const watcher = Deno.watchFs($(JSON.json(dir)));
         for await (const event of watcher) {
@@ -98,7 +98,9 @@ function watch_folder(on_event::Function, dir::AbstractString="."; ignore_access
                 @warn "Unrecognized file watching event. Please report this to https://github.com/JuliaPluto/BetterFileWatching.jl" event_raw ex=(e,catch_backtrace())
             end
             if !(ignore_accessed && event isa Accessed)
-                on_event(event)
+                if !(ignore_dotgit && event isa FileEvent && all(".git" ∈ splitpath(relpath(path, dir)) for path in event.paths))
+                    on_event(event)
+                end
             end
         end
     end
