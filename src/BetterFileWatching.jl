@@ -107,18 +107,23 @@ function watch_folder(on_event::Function, dir::AbstractString=".")
         if !istaskdone(deno_task)
             schedule(deno_task, e; error=true)
         end
+        if !(e isa InterruptException)
+            showerror(stderr, e, catch_backtrace())
+        end
     end
     
     try wait(watch_task) catch; end
 end
 
 
-function watch_folder(dir::AbstractString=".")::FileEvent
-    event = Ref{FileEvent}()
+function watch_folder(dir::AbstractString=".")::Union{Nothing,FileEvent}
+    event = Ref{Union{Nothing,FileEvent}}(nothing)
     task = Ref{Task}()
     task[] = @async watch_folder(dir) do e
         event[] = e
+        try
         schedule(task[], InterruptException(); error=true) 
+        catch; end
     end
     wait(task[])    
     event[]

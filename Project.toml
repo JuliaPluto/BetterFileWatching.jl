@@ -1,7 +1,7 @@
 name = "BetterFileWatching"
 uuid = "c9fd44ac-77b5-486c-9482-9798bd063cc6"
 authors = ["Fons van der Plas <fons@plutojl.org>"]
-version = "0.1.1"
+version = "0.1.2"
 
 [deps]
 Deno_jll = "04572ae6-984a-583e-9378-9577a1c2574d"
