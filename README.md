@@ -31,4 +31,4 @@ schedule(watch_task, InterruptException(); error=true)
 
 -   `BetterFileWatching.watch_folder` works _recursively_, i.e. subfolders are also watched.
 -   `BetterFileWatching.watch_folder` also watching file _contents_ for changes.
--   BetterFileWatching.jl is based on [Deno.watchFs](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package.
+-   BetterFileWatching.jl is just a small wrapper around [`Deno.watchFs`](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package. `Deno.watchFs` is well-tested and widely used.
