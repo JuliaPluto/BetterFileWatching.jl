@@ -1,9 +1,6 @@
 module BetterFileWatching
 
-using Deno_jll
-
-import JSON
-
+include("./libwatcher.jl")
 
 abstract type FileEvent end
 
@@ -18,14 +15,25 @@ struct Created <: FileEvent
 end
 struct Accessed <: FileEvent
     paths::Vector{String}
+
+    function Accessed(p)
+        @warn "Accessed is deprecated and will be removed in the following versions."
+    end
 end
 
-const mapFileEvent = Dict(
-    "modify" => Modified,
-    "create" => Created,
-    "remove" => Removed,
-    "access" => Accessed,
-)
+function convert_to_deno_events(events::Vector{Event})
+    reduce(events; init=(; modified=Modified(String[]), removed=Removed(String[]), created=Created(String[]))) do acc, event
+        if event.is_created
+            push!(acc.created.paths, event.path)
+        elseif event.is_deleted
+            push!(acc.removed.paths, event.path)
+        else
+            push!(acc.modified.paths, event.path)
+        end
+
+        acc
+    end
+end
 
 export watch_folder, watch_file
 
@@ -73,70 +81,24 @@ $(_doc_examples(true))
 -   `BetterFileWatching.watch_folder` also watching file _contents_ for changes.
 -   BetterFileWatching.jl is based on [Deno.watchFs](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package.
 """
-function watch_folder(on_event::Function, dir::AbstractString="."; ignore_accessed::Bool=true, ignore_dotgit::Bool=true)
-    script = """
-        const watcher = Deno.watchFs($(JSON.json(dir)));
-        for await (const event of watcher) {
-            try {
-                await Deno.stdout.write(new TextEncoder().encode("\\n" + JSON.stringify(event) + "\\n"));
-            } catch(e) {
-                Deno.exit();
-            }
-        }
-    """
-
-    outpipe = Pipe()
-
-    function on_stdout(str)
-        for s in split(str, "\n"; keepempty=false)
-            local event_raw = nothing
-            event = try
-                event_raw = JSON.parse(s)
-                T = mapFileEvent[event_raw["kind"]]
-                T(String.(event_raw["paths"]))
-            catch e
-                @warn "Unrecognized file watching event. Please report this to https://github.com/JuliaPluto/BetterFileWatching.jl" event_raw ex=(e,catch_backtrace())
-            end
-            if !(ignore_accessed && event isa Accessed)
-                if !(ignore_dotgit && event isa FileEvent && all(".git" ∈ splitpath(relpath(path, dir)) for path in event.paths))
-                    on_event(event)
-                end
-            end
-        end
+function watch_folder(on_event::Function, dir::AbstractString="."; ignore_accessed::Union{Bool,Nothing}=nothing, ignore_dotgit::Bool=true)
+    # blocking version with a callback
+    if ignore_accessed !== nothing
+        @warn "ignore_accessed is deprecated and will be removed in the coming versions."
     end
 
-    deno_task = @async run(pipeline(`$(deno()) eval $(script)`; stdout=outpipe))
-    watch_task = @async try
-        sleep(.1)
-        while true
-            on_stdout(String(readavailable(outpipe)))
-        end
-    catch e
-        if !istaskdone(deno_task)
-            schedule(deno_task, e; error=true)
-        end
-        if !(e isa InterruptException)
-            showerror(stderr, e, catch_backtrace())
-        end
+    watch(dir) do events
+        events = convert_to_deno_events(events)
+        length(events.modified.paths) > 0 && on_event(events.modified)
+        length(events.created.paths) > 0 && on_event(events.created)
+        length(events.removed.paths) > 0 && on_event(events.removed)
     end
-    
-    try wait(watch_task) catch; end
 end
 
 
 function watch_folder(dir::AbstractString="."; kwargs...)::Union{Nothing,FileEvent}
-    event = Ref{Union{Nothing,FileEvent}}(nothing)
-    task = Ref{Task}()
-    task[] = @async watch_folder(dir; kwargs...) do e
-        event[] = e
-        try
-        schedule(task[], InterruptException(); error=true) 
-        catch; end
-    end
-    wait(task[])    
-    event[]
+    # blocking without callback
 end
-
 
 """
 ```julia
