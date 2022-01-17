@@ -97,7 +97,26 @@ end
 
 
 function watch_folder(dir::AbstractString="."; kwargs...)::Union{Nothing,FileEvent}
+    # legacy API -----
     # blocking without callback
+    chan = Channel{FileEvent}(1)
+
+    watcher = subscribe(dir) do events
+        events = convert_to_deno_events(events)
+
+        if length(events.modified.paths) > 0
+            put!(chan, events.modified)
+        elseif length(events.created.paths) > 0
+            put!(chan, events.created)
+        elseif length(events.removed.paths) > 0
+            put!(chan, events.removed)
+        end
+    end
+
+    event = take!(chan)
+    unsubscribe(watcher)
+
+    event
 end
 
 """
