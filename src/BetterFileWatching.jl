@@ -79,15 +79,15 @@ $(_doc_examples(true))
 
 -   `BetterFileWatching.watch_folder` works _recursively_, i.e. subfolders are also watched.
 -   `BetterFileWatching.watch_folder` also watching file _contents_ for changes.
--   BetterFileWatching.jl is based on [Deno.watchFs](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package.
+-   BetterFileWatching.jl is based on a port of [parcel-bundler/watcher](https://github.com/parcel-bundler/watcher) to Julia (available on [JuliaPluto/watcher](https://github.com/JuliaPluto/watcher))
 """
 function watch_folder(on_event::Function, dir::AbstractString="."; ignore_accessed::Union{Bool,Nothing}=nothing, ignore_dotgit::Bool=true)
     # blocking version with a callback
-    if ignore_accessed !== nothing
+    if ignore_accessed === true
         @warn "ignore_accessed is deprecated and will be removed in the coming versions."
     end
 
-    watch(dir) do events
+    watch_folder_sync(dir; options = Options(ignores=Set{String}(ignore_dotgit ? [] : [".git/"]))) do events
         events = convert_to_deno_events(events)
         length(events.modified.paths) > 0 && on_event(events.modified)
         length(events.created.paths) > 0 && on_event(events.created)
@@ -132,9 +132,45 @@ $(_doc_examples(false))
 
 # Differences with the FileWatching stdlib
 
--   BetterFileWatching.jl is based on [Deno.watchFs](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package.
+-   BetterFileWatching.jl is based on a port of [parcel-bundler/watcher](https://github.com/parcel-bundler/watcher) to Julia (available on [JuliaPluto/watcher](https://github.com/JuliaPluto/watcher))
 """
-watch_file(filename::AbstractString; kwargs...) = watch_folder(filename; kwargs...)
-watch_file(f::Function, filename::AbstractString; kwargs...) = watch_folder(f, filename; kwargs...)
+function watch_file(filename::AbstractString; kwargs...)
+    file_path = abspath(filename)
+    dir_path = dirname(file_path)
+
+    chan = Channel{FileEvent}(1)
+
+    watcher = subscribe(dir_path) do events
+        file_event = findfirst(event -> abspath(event.path) == file_path, events)
+        file_event === nothing && return
+        events = convert_to_deno_events([events[file_event]])
+
+        if length(events.modified.paths) > 0
+            put!(chan, events.modified)
+        elseif length(events.created.paths) > 0
+            put!(chan, events.created)
+        elseif length(events.removed.paths) > 0
+            put!(chan, events.removed)
+        end
+    end
+
+    event = take!(chan)
+    unsubscribe(watcher)
+
+    event
+end
+
+function watch_file(f::Function, filename::AbstractString; kwargs...) 
+    file_path = abspath(filename)
+    dir_path = dirname(file_path)
+    watch_folder(dir_path; kwargs...) do event
+        filter!(event.paths) do path
+            normpath(path) == file_path
+        end
+        if length(event.paths) > 0
+            f(event)
+        end
+    end
+end
 
 end

@@ -29,7 +29,7 @@ macro asynclog(expr)
 	end
 end
 
-
+include("./snapshots.jl")
 
 @testset "Basic - $(method)" for method in ["new", "legacy"]
     test_dir = tempname(cleanup=false)
