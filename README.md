@@ -6,7 +6,7 @@ watch_folder(f::Function, dir=".")
 
 Watch a folder recursively for any changes. Includes changes to file contents. A [`FileEvent`](@ref) is passed to the callback function `f`.
 
-# Example
+## Examples
 
 ```julia
 watch_folder(".") do event
@@ -27,8 +27,22 @@ sleep(5)
 schedule(watch_task, InterruptException(); error=true)
 ```
 
-# Differences with the FileWatching stdlib
+## Snapshots
+
+The library also allow you take snapshots of a directory and read those snapshots later to see exactly which files have been updated/deleted/created.
+
+```julia
+options = BetterFileWatching.Options(ignores = Set{String}(["./.git"]))
+BetterFileWatching.write_snapshot(dir, snapshot_path; options = options)
+
+# Create some, do some changes, delete some files...
+
+events = BetterFileWatching.get_events_since(dir, snapshot_path; options = options)
+```
+
+## Differences with the FileWatching stdlib
 
 -   `BetterFileWatching.watch_folder` works _recursively_, i.e. subfolders are also watched.
 -   `BetterFileWatching.watch_folder` also watching file _contents_ for changes.
--   BetterFileWatching.jl is just a small wrapper around [`Deno.watchFs`](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package. `Deno.watchFs` is well-tested and widely used.
+-   BetterFileWatching.jl is just a wrapper around a port of [parcel-bundler/watcher](https://github.com/parcel-bundler/watcher) to Julia (available on [JuliaPluto/watcher](https://github.com/JuliaPluto/watcher))
+
