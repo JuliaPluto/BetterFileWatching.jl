@@ -69,7 +69,7 @@ end
 
 
     function somethingdetected()
-        result = poll(3, 1/100) do
+        result = poll(10, 1/100) do
             length(events) > last_length[]
         end
         sleep(.5)
