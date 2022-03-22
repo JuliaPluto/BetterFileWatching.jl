@@ -1,5 +1,4 @@
-libwatcher = "/home/paul/Projects/watcher/build/libwatcher.so"
-include_dependency(libwatcher)
+using libwatcher_jll
 
 mutable struct VariableSize{N}
     data::NTuple{N,UInt8}
