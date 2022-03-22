@@ -39,6 +39,18 @@ Base.@kwdef struct Options
     backend = "default"
 end
 
+@doc """
+    Options(; ignores::Set{String} = Set{String}(), backend = "default")
+
+The ignores field of options can be used to prevent receiving file update events when watching a folder.
+
+```julia
+julia> watch_folder_sync("./"; options = Options(ignores = Set(["./git"]))) do events
+           @info "We have received a batch of events" events
+       end
+```
+""" Options
+
 function watcher_write_snapshot(dir, snapshot_path, options)
     @ccall libwatcher.watcher_write_snapshot(
         dir::Cstring,
@@ -142,6 +154,10 @@ struct JLEvent
     is_deleted::Cuchar
 end
 
+"""
+A small struct representing a single file event. If both `event.is_created` and `event.is_deleted` are false then the event corresponds to
+a file content change.
+"""
 struct Event
     path::String
     is_created::Bool
@@ -250,8 +266,10 @@ function write_snapshot(dir, snapshot_path; options = Options())
 end
 
 """
-get_events_since(dir::AbstractString, snapshot_path::AbstractString)::Vector{Event}
+    get_events_since(dir::AbstractString, snapshot_path::AbstractString; options = Options())::Vector{Event}
 
+Reads from the snapshot file created using `BetterFileWatching.write_snapshot` and returns the file events
+corresponding to changes, creations and deletions since that snapshot was written to.
 """
 function get_events_since(dir, snapshot_path; options = Options())
     dir = sanitize_path(dir)

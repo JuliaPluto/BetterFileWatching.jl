@@ -38,12 +38,12 @@ schedule(watch_task, InterruptException(); error=true)
 The library also allow you take snapshots of a directory and read those snapshots later to see exactly which files have been updated/deleted/created.
 
 ```julia
-options = BetterFileWatching.Options(ignores = Set{String}(["./.git"]))
-BetterFileWatching.write_snapshot(dir, snapshot_path; options = options)
+options = Options(ignores = Set{String}(["./.git"]))
+write_snapshot(dir, snapshot_path; options = options)
 
-# Create some, do some changes, delete some files...
+# Create some files, do some changes;, delete some files...
 
-events = BetterFileWatching.get_events_since(dir, snapshot_path; options = options)
+events = get_events_since(dir, snapshot_path; options = options)
 ```
 
 ## Differences with the FileWatching stdlib

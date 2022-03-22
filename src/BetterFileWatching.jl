@@ -36,6 +36,7 @@ function convert_to_deno_events(events::Vector{Event})
 end
 
 export watch_folder, watch_file
+export Options, write_snapshot, get_events_since
 
 function _doc_examples(folder)
     f = folder ? "folder" : "file"
