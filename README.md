@@ -7,7 +7,7 @@ watch_folder(f::Function, dir=".")
 Watch a folder recursively for any changes. Includes changes to file contents. A [`FileEvent`](@ref) is passed to the callback function `f`.
 
 ## Examples
-=======
+
 ```julia
 watch_file(f::Function, filename=".")
 ```
