@@ -124,7 +124,7 @@ end
 watch_file(f::Function, filename::AbstractString)
 ```
 
-Watch a folderfile recursively for any changes. A [`FileEvent`](@ref) is passed to the callback function `f` when a change occurs.
+Watch a file recursively for any changes. A [`FileEvent`](@ref) is passed to the callback function `f` when a change occurs.
 
 Use the single-argument `watch_file(filename::AbstractString)` to create a **blocking call** until the file changes (like the FileWatching standard library).
 
