@@ -4,12 +4,9 @@ authors = ["Fons van der Plas <fons@plutojl.org>"]
 version = "0.1.5"
 
 [deps]
-Deno_jll = "04572ae6-984a-583e-9378-9577a1c2574d"
-JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+libwatcher_jll = "f2e3f4ed-6d30-53f6-bb33-6a6ab454fa9c"
 
 [compat]
-Deno_jll = "^1.10"
-JSON = "^0.20, ^0.21"
 julia = "1"
 
 [extras]
@@ -17,4 +14,3 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test"]
-

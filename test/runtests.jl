@@ -29,7 +29,7 @@ macro asynclog(expr)
 	end
 end
 
-
+include("./snapshots.jl")
 
 @testset "Basic - $(method)" for method in ["new", "legacy"]
     test_dir = tempname(cleanup=false)
@@ -55,11 +55,13 @@ end
             push!(events, e)
         end
     else
-        @asynclog while true
+        @info "using legacy"
+        t = @async while true
             e = watch_folder(test_dir)
             @info "Event" e
             push!(events, e)
         end
+        t
     end
 
     sleep(2)
@@ -98,4 +100,3 @@ end
     sleep(2)
     @test_nowarn schedule(watch_task, InterruptException(); error=true)
 end
-
