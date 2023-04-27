@@ -115,18 +115,11 @@ function watch_folder(on_event::Function, dir::AbstractString="."; ignore_access
     catch e
         Base.process_running(deno_proc) || Base.kill(deno_proc)
         if !(e isa InterruptException)
-            showerror(stderr, e, catch_backtrace())
-        end
-    end
-    
-    try
-        wait(watch_task)
-    catch e
-        Base.process_running(deno_proc) || Base.kill(deno_proc)
-        if !(e isa InterruptException)
             @error "BetterFileWatching error" exception=(e,catch_backtrace())
         end
     end
+    
+    try wait(watch_task) catch; end
 end
 
 
