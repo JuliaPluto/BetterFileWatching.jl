@@ -10,6 +10,9 @@ abstract type FileEvent end
 struct Modified <: FileEvent
     paths::Vector{String}
 end
+struct Renamed <: FileEvent
+    paths::Vector{String}
+end
 struct Removed <: FileEvent
     paths::Vector{String}
 end
@@ -22,6 +25,7 @@ end
 
 const mapFileEvent = Dict(
     "modify" => Modified,
+    "rename" => Renamed,
     "create" => Created,
     "remove" => Removed,
     "access" => Accessed,
