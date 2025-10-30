@@ -8,13 +8,12 @@ Deno_jll = "04572ae6-984a-583e-9378-9577a1c2574d"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 
 [compat]
-Deno_jll = "2"
-JSON = "1"
-julia = "1"
+Deno_jll = "^1.10, 2"
+JSON = "^0.20, ^0.21, 1"
+julia = "1.10"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test"]
-
