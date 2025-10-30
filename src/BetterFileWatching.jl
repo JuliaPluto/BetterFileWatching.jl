@@ -7,24 +7,37 @@ import JSON
 
 abstract type FileEvent end
 
-struct Modified <: FileEvent
-    paths::Vector{String}
-end
-struct Removed <: FileEvent
-    paths::Vector{String}
-end
-struct Created <: FileEvent
+struct AnyEvent <: FileEvent
     paths::Vector{String}
 end
 struct Accessed <: FileEvent
     paths::Vector{String}
 end
+struct Created <: FileEvent
+    paths::Vector{String}
+end
+struct Modified <: FileEvent
+    paths::Vector{String}
+end
+struct Renamed <: FileEvent
+    paths::Vector{String}
+end
+struct Removed <: FileEvent
+    paths::Vector{String}
+end
+struct Other <: FileEvent
+    paths::Vector{String}
+end
 
+# These should match https://docs.deno.com/api/deno/~/Deno.FsEvent
 const mapFileEvent = Dict(
-    "modify" => Modified,
-    "create" => Created,
-    "remove" => Removed,
+    "any" => AnyEvent,
     "access" => Accessed,
+    "create" => Created,
+    "modify" => Modified,
+    "rename" => Renamed,
+    "remove" => Removed,
+    "other" => Other,
 )
 
 export watch_folder, watch_file

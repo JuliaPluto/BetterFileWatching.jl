@@ -12,6 +12,24 @@ watch_file(f::Function, filename=".")
 
 Watch a file for changes. A [`FileEvent`](@ref) is passed to the callback function `f`.
 
+
+### `FileEvent`
+The object passed to the callback function `f` is a `FileEvent`. This is a supertype, with the following subtypes:
+
+```
+julia> BetterFileWatching.FileEvent |> subtypes
+7-element Vector{Any}:
+ BetterFileWatching.Accessed
+ BetterFileWatching.AnyEvent
+ BetterFileWatching.Created
+ BetterFileWatching.Modified
+ BetterFileWatching.Other
+ BetterFileWatching.Removed
+ BetterFileWatching.Renamed
+```
+
+Each of these types as a `.paths` field, which is a vector of strings. This is the path of the file or folder that changed. In practice, the `AnyEvent` and `Other` occur only rarely, as a fallback when the specific event type is not known.
+
 # Example
 
 ```julia
