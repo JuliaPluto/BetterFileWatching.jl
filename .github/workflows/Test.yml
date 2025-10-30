@@ -4,12 +4,12 @@ on:
     workflow_dispatch:
     push:
         paths-ignore:
-            - "**.md"
+            - '**.md'
         branches:
             - main
     pull_request:
         paths-ignore:
-            - "**.md"
+            - '**.md'
 
 jobs:
     test:
@@ -19,14 +19,14 @@ jobs:
         # continue-on-error: true
         strategy:
             matrix:
-                julia-version: ["1.6"]
+                julia-version: ['1.6', '1.10', '1']
                 os: [ubuntu-latest, macOS-latest, windows-latest]
 
         steps:
             # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-            - uses: actions/checkout@v2
+            - uses: actions/checkout@v5
 
-            - uses: julia-actions/setup-julia@v1
+            - uses: julia-actions/setup-julia@v2
               with:
                   version: ${{ matrix.julia-version }}
 
