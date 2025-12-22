@@ -1,6 +1,6 @@
 module BetterFileWatching
 
-using Deno_jll
+import Deno_jll: deno
 
 import JSON
 
@@ -93,6 +93,7 @@ function watch_folder(on_event::Function, dir::AbstractString="."; ignore_access
             try {
                 await Deno.stdout.write(new TextEncoder().encode("\\n" + JSON.stringify(event) + "\\n"));
             } catch(e) {
+                console.error("Error while writing changes to stdout", e);
                 Deno.exit();
             }
         }
@@ -118,18 +119,16 @@ function watch_folder(on_event::Function, dir::AbstractString="."; ignore_access
         end
     end
 
-    deno_task = @async run(pipeline(`$(deno()) eval $(script)`; stdout=outpipe))
+    deno_proc = open(pipeline(`$(deno()) eval $(script)`; stdout=outpipe))
+    atexit(() -> Base.kill(deno_proc))
     watch_task = @async try
-        sleep(.1)
         while true
             on_stdout(String(readavailable(outpipe)))
         end
     catch e
-        if !istaskdone(deno_task)
-            schedule(deno_task, e; error=true)
-        end
+        Base.process_running(deno_proc) || Base.kill(deno_proc)
         if !(e isa InterruptException)
-            showerror(stderr, e, catch_backtrace())
+            @error "BetterFileWatching error" exception=(e,catch_backtrace())
         end
     end
     
