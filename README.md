@@ -79,20 +79,17 @@ BetterFileWatching.jl is written in Julia without binary (JLL) dependencies. It 
 
 | Platform | Mechanism |
 |---|---|
-| macOS | FSEvents, through the libuv that ships inside Julia — recursion is a libuv flag (`UV_FS_EVENT_RECURSIVE`). _(The FileWatching stdlib does not pass this flag.)_ |
-| Windows | `ReadDirectoryChangesW` with subtree watching, through the same libuv API as MacOS. |
-| Linux | raw `inotify` via `ccall`, one watch per directory (registered dynamically as directories appear), drained by a Julia task via `FileWatching.FDWatcher` — no extra OS thread |
+| macOS | `FSEvents` through libuv _(This is similar to the FileWatching stdlib, but with the recursive flag.)_ |
+| Windows | `ReadDirectoryChangesW` with subtree watching through libuv _(same Julia code as MacOS)_ |
+| Linux | `inotify` through `ccall`, one watch per directory (registered dynamically as directories appear), drained by a Julia task via `FileWatching.FDWatcher` |
 
 # Differences with the FileWatching stdlib
 
-`BetterFileWatching.watch_folder` is an alternative to `FileWatching.watch_folder`. The differences are, in addition to those mentioned above for `watch_file`:
--   `BetterFileWatching.watch_folder` works _recursively_, i.e. subfolders are also watched — including folders created after the watch started.
--   `BetterFileWatching.watch_folder` also watches for changes to the _contents_ of files contained in the folder.
-
-
-`BetterFileWatching.watch_file` is an alternative to `FileWatching.watch_file`. The differences are:
--   We offer an additional callback API (`watch_file(::Function, ::String)`, like the examples above), which means that *handling* events does not block *receiving new events*: we keep listening to changes asynchronously while your callback runs.
--   `watch_file` understands the delete/recreate and atomic-save behaviour from code editors, because the parent directory is watched internally.
+`BetterFileWatching.watch_folder` is an alternative to the `FileWatching` stdlib. The differences are:
+-   We offer an additional **callback API** (`watch_folder(::Function, ::String)`, like the examples above), which means that *handling* events does not block *receiving new events*: we keep listening to changes asynchronously while your callback runs.
+-  `BetterFileWatching.watch_folder` works **recursively**, i.e. subfolders are also watched, including folders created after the watch started.
+-  `BetterFileWatching.watch_folder` also watches for changes to the **_contents_ of files** contained in the folder.
+-   `BetterFileWatching.watch_file` understands the delete/recreate and atomic-save behaviour from code editors, because the parent directory is watched internally.
 
 
 # How this package was created (with AI)
@@ -101,7 +98,7 @@ Versions ≤ 0.1 were a small wrapper around `Deno.watchFs`, running Deno (~30 M
 
 Paul worked on a wrapper around `@parcel/watcher` ([PR](https://github.com/JuliaPluto/BetterFileWatching.jl/pull/2)), but there were a couple issues that were too hard to fix, so this approach was abandoned.
 
-Version 1.0.0 is a complete rewrite by AI 🤖 to work without dependencies and without subprocess, inspired by [bun's file watcher](https://github.com/oven-sh/bun/tree/main/src/watcher). Fons reviewed the package as a whole, but the code is not completely reviewed by him, because he does not understand the underlying API. 
+Version 1.0 is a complete rewrite by AI 🤖 to work without dependencies and without subprocess, inspired by [bun's file watcher](https://github.com/oven-sh/bun/tree/main/src/watcher). Fons reviewed the package as a whole, but deep internals are not reviewed by him, because he does not understand the system APIs. 
 
 
 <details>
