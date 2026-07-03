@@ -1,15 +1,15 @@
 name = "BetterFileWatching"
 uuid = "c9fd44ac-77b5-486c-9482-9798bd063cc6"
 authors = ["Fons van der Plas <fons@plutojl.org>"]
-version = "0.1.6"
+version = "0.2.0"
 
 [deps]
-Deno_jll = "04572ae6-984a-583e-9378-9577a1c2574d"
-JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+CancellationTokens = "2e8d271d-f2e2-407b-a864-17eb2156783e"
+FileWatching = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
 [compat]
-Deno_jll = "^1.10, 2"
-JSON = "^0.20, ^0.21, 1"
+CancellationTokens = "2.3"
+FileWatching = "1"
 julia = "1.10"
 
 [extras]

@@ -11,23 +11,34 @@ on:
         paths-ignore:
             - '**.md'
 
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
 jobs:
     test:
-        timeout-minutes: 15
+        name: Julia ${{ matrix.julia-version }} — ${{ matrix.os }}
+        timeout-minutes: 30
         runs-on: ${{ matrix.os }}
-        # Uncomment if you want to see all results for all OSses. Otherwise, the first failed test cancels all others
-        # continue-on-error: true
         strategy:
+            fail-fast: false
             matrix:
                 julia-version: ['1.10', '1']
                 os: [ubuntu-latest, macOS-latest, windows-latest]
+                include:
+                    - os: ubuntu-latest
+                      julia-version: 'nightly'
+        continue-on-error: ${{ matrix.julia-version == 'nightly' }}
 
         steps:
-            # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
             - uses: actions/checkout@v7
 
             - uses: julia-actions/setup-julia@v3
               with:
                   version: ${{ matrix.julia-version }}
+
+            - uses: julia-actions/cache@v2
+
+            - uses: julia-actions/julia-buildpkg@v1
 
             - uses: julia-actions/julia-runtest@v1
