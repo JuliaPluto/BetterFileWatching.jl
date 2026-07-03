@@ -44,7 +44,7 @@ watch_folder(".") do event
 end
 ```
 
-You can watch a folder asynchronously, and stop it later with a [CancellationTokens.jl](https://github.com/JuliaPluto/CancellationTokens.jl) token:
+You can watch a folder asynchronously, and stop it later with a [CancellationTokens.jl](https://github.com/davidanthoff/CancellationTokens.jl) token:
 
 ```julia
 using BetterFileWatching, CancellationTokens
