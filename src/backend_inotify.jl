@@ -116,7 +116,7 @@ function _watch_tree!(w::InotifyBackend, dir::String, out::Union{Nothing,Vector{
     for name in entries
         full = joinpath(dir, name)
         _isignored(w.ignore, relpath(full, w.root)) && continue
-        out === nothing || push!(out, Created([full]))
+        out === nothing || push!(out, Created(full))
         if isdir(full)
             haskey(w.dir_to_wd, full) || _add_watch!(w, full)
             _watch_tree!(w, full, out)
@@ -246,7 +246,7 @@ function _dispatch!(w::InotifyBackend, raws::Vector{RawInotifyEvent})
     for raw in raws
         if (raw.mask & IN_Q_OVERFLOW) != 0
             _resync!(w)
-            push!(out, Other([w.root]))
+            push!(out, Other(w.root))
             continue
         end
         if (raw.mask & IN_IGNORED) != 0
@@ -272,26 +272,26 @@ function _dispatch!(w::InotifyBackend, raws::Vector{RawInotifyEvent})
             from = pop!(pending_from, raw.cookie, nothing)
             if from === nothing
                 # moved in from outside the tree: brand-new content
-                push!(out, Created([full]))
+                push!(out, Created(full))
                 isdir_ && _on_new_dir!(w, full, out)
             else
-                push!(out, Renamed([from, full]))
+                push!(out, Renamed(from, full))
                 # renamed within the tree: watches came along, fix bookkeeping
                 isdir_ && w.recursive && _rename_tree!(w, from, full)
             end
         elseif (raw.mask & IN_CREATE) != 0
-            push!(out, Created([full]))
+            push!(out, Created(full))
             isdir_ && _on_new_dir!(w, full, out)
         elseif (raw.mask & IN_DELETE) != 0
-            push!(out, Removed([full]))
+            push!(out, Removed(full))
         elseif (raw.mask & (IN_MODIFY | IN_CLOSE_WRITE | IN_ATTRIB)) != 0
-            push!(out, Modified([full]))
+            push!(out, Modified(full))
         end
     end
 
     # A MOVED_FROM whose pair never arrived (moved outside the tree) = removal.
     for from in values(pending_from)
-        push!(out, Removed([from]))
+        push!(out, Removed(from))
         w.recursive && _evict_tree!(w, from)
     end
 

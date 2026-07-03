@@ -29,7 +29,7 @@ function _uv_fseventscb(handle::Ptr{Cvoid}, filename::Ptr{Int8}, events::Int32, 
     # libuv only distinguishes "change" (contents) from "rename" (appeared /
     # disappeared / renamed). We sample existence here and let the batch merge
     # step pair rename hints into `Renamed` or degrade them to Created/Removed.
-    event = (events & UV_CHANGE) != 0 ? Modified([full]) : RenameHint(full, ispath(full))
+    event = (events & UV_CHANGE) != 0 ? Modified(full) : RenameHint(full, ispath(full))
     _offer!(t.channel, event)
     return nothing
 end

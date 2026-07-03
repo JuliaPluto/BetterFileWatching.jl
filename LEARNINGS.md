@@ -131,7 +131,7 @@ cancel(src)   # watch_folder cleans up and returns
 
 `CancellationTokens.take!(channel, token)` throws `OperationCanceledException` on cancel — exactly the hook we
 need to unblock the event loop and tear down the uv handle. Ran cleanly; events mapped to
-BetterFileWatching-style `Created`/`Modified`/`Removed` structs with `.paths`.
+BetterFileWatching-style `Created`/`Modified`/`Removed` structs with `.path`.
 
 ## Experiment 4 — Linux scaling numbers ✅
 
