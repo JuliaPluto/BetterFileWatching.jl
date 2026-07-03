@@ -197,6 +197,22 @@ newroot() = realpath(mktempdir())
         end
     end
 
+    @testset "ignore predicate can skip .git path segments" begin
+        root = newroot()
+        mkpath(joinpath(root, "project", ".git"))
+        mkpath(joinpath(root, "project", "src"))
+        f_ignored = joinpath(root, "project", ".git", "HEAD")
+        f_seen = joinpath(root, "project", "src", "main.jl")
+
+        with_watcher(root; ignore = rel -> ".git" in split(rel, "/")) do get_events
+            write(f_ignored, "ref: refs/heads/main\n")
+            write(f_seen, "module Main\nend\n")
+            @test await(() -> haspath(get_events(), f_seen))
+            sleep(1.0)  # grace period for the ignored event to (not) arrive
+            @test !haspath(get_events(), f_ignored)
+        end
+    end
+
     @testset "watch_file" begin
         root = newroot()
         target = joinpath(root, "watched.txt")
