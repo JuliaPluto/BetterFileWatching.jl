@@ -106,7 +106,7 @@ every event. Blocks until `token` is cancelled, then cleans up and returns
 `ignore` is an optional predicate on root-relative paths (always
 '/'-separated): events for matching paths are dropped, and on Linux matching
 directories are not even watched. For example,
-`ignore = rel -> ".git" in splitpath(rel)` skips every `.git` folder in the
+`ignore = rel -> ".git" in split(rel, "/")` skips every `.git` folder in the
 tree (and its contents), however deep.
 
 `latency` is the coalescing window in seconds: after the first event arrives,
