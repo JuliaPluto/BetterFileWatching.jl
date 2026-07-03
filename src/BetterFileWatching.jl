@@ -23,7 +23,8 @@ using CancellationTokens: CancellationToken, CancellationTokenSource,
     OperationCanceledException, get_token, cancel
 
 export watch_folder, watch_file,
-    FileEvent, Created, Modified, Removed, Renamed, Other
+    FileEvent, Created, Modified, Removed, Renamed, Other,
+    paths_tuple
 
 # ─── event types ─────────────────────────────────────────────────────────────
 
@@ -70,9 +71,18 @@ struct Other <: FileEvent
 end
 
 _event_key(e::FileEvent) = e.path
-_event_key(e::Renamed) = (e.from, e.to)
+_event_key(e::Renamed) = paths_tuple(e)
 _event_involves(e::FileEvent, path::String) = e.path == path
 _event_involves(e::Renamed, path::String) = e.from == path || e.to == path
+
+"""
+    paths_tuple(event::FileEvent)
+
+Return the path or paths involved in `event` as a tuple. Single-path events
+return `(event.path,)`; renames return `(event.from, event.to)`.
+"""
+paths_tuple(e::FileEvent) = (e.path,)
+paths_tuple(e::Renamed) = (e.from, e.to)
 
 Base.:(==)(a::FileEvent, b::FileEvent) = typeof(a) === typeof(b) && _event_key(a) == _event_key(b)
 Base.hash(e::FileEvent, h::UInt) = hash(_event_key(e), hash(typeof(e), h))

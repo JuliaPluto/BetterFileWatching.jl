@@ -28,7 +28,7 @@ julia> BetterFileWatching.FileEvent |> subtypes
  BetterFileWatching.Renamed
 ```
 
-`Created`, `Modified`, `Removed`, and `Other` each have a `.path::String` field with the absolute path of the file or folder that changed. `Renamed` has `.from::String` and `.to::String` fields when the OS lets us pair the rename.
+`Created`, `Modified`, `Removed`, and `Other` each have a `.path::String` field with the absolute path of the file or folder that changed. `Renamed` has `.from::String` and `.to::String` fields when the OS lets us pair the rename. Use `paths_tuple(event)` to handle both shapes uniformly: it returns `(event.path,)` for single-path events and `(event.from, event.to)` for renames.
 
 Event *kinds* are best-effort: precise on Linux and Windows, coarser on macOS (an append to an existing file may surface as `Created`). Event paths are always reliable. Delivery is at-least-once, so make your callback idempotent.
 

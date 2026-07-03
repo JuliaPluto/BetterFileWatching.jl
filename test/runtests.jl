@@ -34,8 +34,7 @@ function with_watcher(body::Function, dir::AbstractString; kwargs...)
     end
 end
 
-involves(ev::FileEvent, p) = ev.path == p
-involves(ev::Renamed, p) = ev.from == p || ev.to == p
+involves(ev::FileEvent, p) = p in paths_tuple(ev)
 haspath(events, p) = any(ev -> involves(ev, p), events)
 haspath(events, p, T::Type) = any(ev -> ev isa T && involves(ev, p), events)
 
@@ -43,18 +42,12 @@ newroot() = realpath(mktempdir())
 
 @testset "BetterFileWatching" begin
 
-    @testset "event fields" begin
-        @test fieldnames(Created) == (:path,)
-        @test fieldnames(Modified) == (:path,)
-        @test fieldnames(Removed) == (:path,)
-        @test fieldnames(Other) == (:path,)
-        @test fieldtype(Created, :path) == String
-        @test fieldtype(Modified, :path) == String
-        @test fieldtype(Removed, :path) == String
-        @test fieldtype(Other, :path) == String
-        @test fieldnames(Renamed) == (:from, :to)
-        @test fieldtype(Renamed, :from) == String
-        @test fieldtype(Renamed, :to) == String
+    @testset "paths_tuple" begin
+        @test paths_tuple(Created("/r/a")) == ("/r/a",)
+        @test paths_tuple(Modified("/r/a")) == ("/r/a",)
+        @test paths_tuple(Removed("/r/a")) == ("/r/a",)
+        @test paths_tuple(Other("/r")) == ("/r",)
+        @test paths_tuple(Renamed("/r/a", "/r/b")) == ("/r/a", "/r/b")
     end
 
     @testset "batch merging (unit)" begin
@@ -145,7 +138,7 @@ newroot() = realpath(mktempdir())
         with_watcher(root) do get_events
             mv(f_old, f_new)
             if Sys.islinux()
-                @test await(() -> any(ev -> ev isa Renamed && ev.from == f_old && ev.to == f_new, get_events()))
+                @test await(() -> any(ev -> ev isa Renamed && paths_tuple(ev) == (f_old, f_new), get_events()))
             else
                 # coarse platforms: at least both paths show up
                 @test await(() -> haspath(get_events(), f_new))
