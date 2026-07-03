@@ -34,43 +34,52 @@ function with_watcher(body::Function, dir::AbstractString; kwargs...)
     end
 end
 
-haspath(events, p) = any(ev -> p in ev.paths, events)
-haspath(events, p, T::Type) = any(ev -> ev isa T && p in ev.paths, events)
+involves(ev::FileEvent, p) = p in paths_tuple(ev)
+haspath(events, p) = any(ev -> involves(ev, p), events)
+haspath(events, p, T::Type) = any(ev -> ev isa T && involves(ev, p), events)
 
 newroot() = realpath(mktempdir())
 
 @testset "BetterFileWatching" begin
 
+    @testset "paths_tuple" begin
+        @test paths_tuple(Created("/r/a")) == ("/r/a",)
+        @test paths_tuple(Modified("/r/a")) == ("/r/a",)
+        @test paths_tuple(Removed("/r/a")) == ("/r/a",)
+        @test paths_tuple(Other("/r")) == ("/r",)
+        @test paths_tuple(Renamed("/r/a", "/r/b")) == ("/r/a", "/r/b")
+    end
+
     @testset "batch merging (unit)" begin
         a, b = "/r/a", "/r/b"
 
         # exact duplicates are suppressed, even when not adjacent
-        @test _merge_batch(Any[Created([a]), Created([b]), Created([a])]) ==
-              [Created([a]), Created([b])]
+        @test _merge_batch(Any[Created(a), Created(b), Created(a)]) ==
+              [Created(a), Created(b)]
 
         # ...but a genuine create → remove → create survives
-        @test _merge_batch(Any[Created([a]), Removed([a]), Created([a])]) ==
-              [Created([a]), Removed([a]), Created([a])]
+        @test _merge_batch(Any[Created(a), Removed(a), Created(a)]) ==
+              [Created(a), Removed(a), Created(a)]
 
         # adjacent rename hints (gone, then present) pair into Renamed
         @test _merge_batch(Any[RenameHint(a, false), RenameHint(b, true)]) ==
-              [Renamed([a, b])]
+              [Renamed(a, b)]
 
         # unpaired hints degrade by existence
-        @test _merge_batch(Any[RenameHint(a, true)]) == [Created([a])]
-        @test _merge_batch(Any[RenameHint(a, false)]) == [Removed([a])]
+        @test _merge_batch(Any[RenameHint(a, true)]) == [Created(a)]
+        @test _merge_batch(Any[RenameHint(a, false)]) == [Removed(a)]
 
         # same-path disappear + reappear is not a rename
         @test _merge_batch(Any[RenameHint(a, false), RenameHint(a, true)]) ==
-              [Removed([a]), Created([a])]
+              [Removed(a), Created(a)]
 
         # wrong order (present, then gone) does not pair
         @test _merge_batch(Any[RenameHint(a, true), RenameHint(b, false)]) ==
-              [Created([a]), Removed([b])]
+              [Created(a), Removed(b)]
 
         # a Modified between hints breaks adjacency — no false pair
-        @test _merge_batch(Any[RenameHint(a, false), Modified([b]), RenameHint(b, true)]) ==
-              [Removed([a]), Modified([b]), Created([b])]
+        @test _merge_batch(Any[RenameHint(a, false), Modified(b), RenameHint(b, true)]) ==
+              [Removed(a), Modified(b), Created(b)]
     end
 
     @testset "recursive watching" begin
@@ -129,7 +138,7 @@ newroot() = realpath(mktempdir())
         with_watcher(root) do get_events
             mv(f_old, f_new)
             if Sys.islinux()
-                @test await(() -> any(ev -> ev isa Renamed && ev.paths == [f_old, f_new], get_events()))
+                @test await(() -> any(ev -> ev isa Renamed && paths_tuple(ev) == (f_old, f_new), get_events()))
             else
                 # coarse platforms: at least both paths show up
                 @test await(() -> haspath(get_events(), f_new))
@@ -207,7 +216,7 @@ newroot() = realpath(mktempdir())
             @test await(() -> lock(() -> haspath(events, target), lk))
             sleep(0.5)
             snapshot = lock(() -> copy(events), lk)
-            @test all(ev -> ev.paths == [target], snapshot)
+            @test all(ev -> involves(ev, target), snapshot)
             @test !haspath(snapshot, sibling)
         finally
             cancel(src)

@@ -23,13 +23,15 @@ using CancellationTokens: CancellationToken, CancellationTokenSource,
     OperationCanceledException, get_token, cancel
 
 export watch_folder, watch_file,
-    FileEvent, Created, Modified, Removed, Renamed, Other
+    FileEvent, Created, Modified, Removed, Renamed, Other,
+    paths_tuple
 
-# ─── event types (BetterFileWatching ≤ 0.1 compatible shape) ─────────────────
+# ─── event types ─────────────────────────────────────────────────────────────
 
 """
-Abstract supertype of all watch events. Every event has a
-`paths::Vector{String}` field with the absolute path(s) it concerns.
+Abstract supertype of all watch events. `Created`, `Modified`, `Removed`, and
+`Other` each have a `path::String` field with the absolute path they concern.
+`Renamed` has `from::String` and `to::String` fields.
 
 Event *kinds* are best-effort and platform-dependent: precise on Linux and
 Windows, coarser on macOS (where e.g. an append to an existing file may
@@ -40,35 +42,50 @@ abstract type FileEvent end
 
 "A file or directory appeared."
 struct Created <: FileEvent
-    paths::Vector{String}
+    path::String
 end
 
 "File contents or metadata changed."
 struct Modified <: FileEvent
-    paths::Vector{String}
+    path::String
 end
 
 "A file or directory was deleted."
 struct Removed <: FileEvent
-    paths::Vector{String}
+    path::String
 end
 
-"A rename was observed. When the OS lets us pair it, `paths` is `[from, to]`."
+"A paired rename from one absolute path to another was observed."
 struct Renamed <: FileEvent
-    paths::Vector{String}
+    from::String
+    to::String
 end
 
 """
 Fallback event. Currently emitted when the kernel event queue overflowed:
-some events were lost and `paths` is the watch root — rescan if you need
-exact state.
+some events were lost and `path` is the watch root — rescan if you need exact
+state.
 """
 struct Other <: FileEvent
-    paths::Vector{String}
+    path::String
 end
 
-Base.:(==)(a::FileEvent, b::FileEvent) = typeof(a) === typeof(b) && a.paths == b.paths
-Base.hash(e::FileEvent, h::UInt) = hash(e.paths, hash(typeof(e), h))
+_event_key(e::FileEvent) = e.path
+_event_key(e::Renamed) = paths_tuple(e)
+_event_involves(e::FileEvent, path::String) = e.path == path
+_event_involves(e::Renamed, path::String) = e.from == path || e.to == path
+
+"""
+    paths_tuple(event::FileEvent)
+
+Return the path or paths involved in `event` as a tuple. Single-path events
+return `(event.path,)`; renames return `(event.from, event.to)`.
+"""
+paths_tuple(e::FileEvent) = (e.path,)
+paths_tuple(e::Renamed) = (e.from, e.to)
+
+Base.:(==)(a::FileEvent, b::FileEvent) = typeof(a) === typeof(b) && _event_key(a) == _event_key(b)
+Base.hash(e::FileEvent, h::UInt) = hash(_event_key(e), hash(typeof(e), h))
 
 include("common.jl")
 include("backend_uv.jl")
@@ -94,7 +111,7 @@ tree (and its contents), however deep.
 
 `latency` is the coalescing window in seconds: after the first event arrives,
 we wait this long for stragglers, then merge the batch — exact duplicates are
-suppressed and rename pairs are stitched into `Renamed([from, to])` where the
+suppressed and rename pairs are stitched into `Renamed(from, to)` where the
 OS allows. Editors save files in bursts (write-tmpfile-then-rename dances);
 the window collapses those into fewer, better events. Set `latency = 0` to
 dispatch every event immediately.
@@ -179,9 +196,7 @@ function _watch(
             end
             for event in _merge_batch(batch)
                 if filter_path !== nothing
-                    paths = filter(==(filter_path), event.paths)
-                    isempty(paths) && continue
-                    event = (typeof(event))(paths)
+                    _event_involves(event, filter_path) || continue
                 end
                 f(event)
             end

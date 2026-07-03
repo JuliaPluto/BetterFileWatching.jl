@@ -46,13 +46,13 @@ function _collect_batch!(batch::Vector{Any}, ch::Channel, token, latency::Real)
 end
 
 # Merge a batch: pair rename hints, and drop an event when the previous event
-# for the same path(s) was identical. Duplicates are inherent to at-least-once
+# for the same path key was identical. Duplicates are inherent to at-least-once
 # delivery — the Linux new-directory rescan synthesizes Created events that
 # the kernel may also report — but a genuine create → remove → create must
-# survive, so we compare against the last event per path, not a global set.
+# survive, so we compare against the last event per key, not a global set.
 function _merge_batch(batch::Vector{Any})
     out = FileEvent[]
-    last_for = Dict{Vector{String},FileEvent}()
+    last_for = Dict{Any,FileEvent}()
     i = firstindex(batch)
     while i <= lastindex(batch)
         x = batch[i]
@@ -60,18 +60,19 @@ function _merge_batch(batch::Vector{Any})
             next = i < lastindex(batch) ? batch[i+1] : nothing
             if !x.existed && next isa RenameHint && next.existed && next.path != x.path
                 i += 1   # consume the pair
-                Renamed([x.path, next.path])
+                Renamed(x.path, next.path)
             elseif x.existed
-                Created([x.path])
+                Created(x.path)
             else
-                Removed([x.path])
+                Removed(x.path)
             end
         else
             x::FileEvent
         end
-        if get(last_for, event.paths, nothing) != event
+        key = _event_key(event)
+        if get(last_for, key, nothing) != event
             push!(out, event)
-            last_for[event.paths] = event
+            last_for[key] = event
         end
         i += 1
     end
