@@ -1,7 +1,7 @@
 name = "BetterFileWatching"
 uuid = "c9fd44ac-77b5-486c-9482-9798bd063cc6"
 authors = ["Fons van der Plas <fons@plutojl.org>"]
-version = "0.2.0"
+version = "1.0.0"
 
 [deps]
 CancellationTokens = "2e8d271d-f2e2-407b-a864-17eb2156783e"
