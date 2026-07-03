@@ -1,172 +1,197 @@
+"""
+    BetterFileWatching
+
+Native, recursive, callback-based file watching for Julia. No subprocess, no
+binary dependencies — just the OS facilities that ship inside Julia's libuv
+(macOS, Windows) plus raw inotify (Linux).
+
+```julia
+using BetterFileWatching, CancellationTokens
+
+src = CancellationTokenSource()
+watch_task = @async watch_folder(".", get_token(src)) do event
+    @info "Something changed!" event
+end
+
+# ... later:
+cancel(src)   # watch_folder cleans up and returns
+```
+"""
 module BetterFileWatching
 
-using Deno_jll
+using CancellationTokens: CancellationToken, CancellationTokenSource,
+    OperationCanceledException, get_token, cancel
 
-import JSON
+export watch_folder, watch_file,
+    FileEvent, Created, Modified, Removed, Renamed, Other
 
+# ─── event types (BetterFileWatching ≤ 0.1 compatible shape) ─────────────────
 
+"""
+Abstract supertype of all watch events. Every event has a
+`paths::Vector{String}` field with the absolute path(s) it concerns.
+
+Event *kinds* are best-effort and platform-dependent: precise on Linux and
+Windows, coarser on macOS (where e.g. an append to an existing file may
+surface as `Created`). Delivery is at-least-once: duplicates are possible,
+consumers should be idempotent.
+"""
 abstract type FileEvent end
 
-struct AnyEvent <: FileEvent
-    paths::Vector{String}
-end
-struct Accessed <: FileEvent
-    paths::Vector{String}
-end
+"A file or directory appeared."
 struct Created <: FileEvent
     paths::Vector{String}
 end
+
+"File contents or metadata changed."
 struct Modified <: FileEvent
     paths::Vector{String}
 end
-struct Renamed <: FileEvent
-    paths::Vector{String}
-end
+
+"A file or directory was deleted."
 struct Removed <: FileEvent
     paths::Vector{String}
 end
+
+"A rename was observed. When the OS lets us pair it, `paths` is `[from, to]`."
+struct Renamed <: FileEvent
+    paths::Vector{String}
+end
+
+"""
+Fallback event. Currently emitted when the kernel event queue overflowed:
+some events were lost and `paths` is the watch root — rescan if you need
+exact state.
+"""
 struct Other <: FileEvent
     paths::Vector{String}
 end
 
-# These should match https://docs.deno.com/api/deno/~/Deno.FsEvent
-const mapFileEvent = Dict(
-    "any" => AnyEvent,
-    "access" => Accessed,
-    "create" => Created,
-    "modify" => Modified,
-    "rename" => Renamed,
-    "remove" => Removed,
-    "other" => Other,
+Base.:(==)(a::FileEvent, b::FileEvent) = typeof(a) === typeof(b) && a.paths == b.paths
+Base.hash(e::FileEvent, h::UInt) = hash(e.paths, hash(typeof(e), h))
+
+include("common.jl")
+include("backend_uv.jl")
+include("backend_inotify.jl")
+
+const Backend = Sys.islinux() ? InotifyBackend : UVBackend
+
+# ─── public API ──────────────────────────────────────────────────────────────
+
+"""
+    watch_folder(f::Function, dir=".", token::CancellationToken; ignore=nothing, latency=0.01)
+    watch_folder(f::Function, dir=".")
+
+Watch `dir` (recursively!) for changes, calling `f(event::FileEvent)` for
+every event. Blocks until `token` is cancelled, then cleans up and returns
+`nothing`. Without a token it blocks forever.
+
+`ignore` is an optional predicate on root-relative paths (always
+'/'-separated): events for matching paths are dropped, and on Linux matching
+directories are not even watched. For example,
+`ignore = rel -> ".git" in splitpath(rel)` skips every `.git` folder in the
+tree (and its contents), however deep.
+
+`latency` is the coalescing window in seconds: after the first event arrives,
+we wait this long for stragglers, then merge the batch — exact duplicates are
+suppressed and rename pairs are stitched into `Renamed([from, to])` where the
+OS allows. Editors save files in bursts (write-tmpfile-then-rename dances);
+the window collapses those into fewer, better events. Set `latency = 0` to
+dispatch every event immediately.
+
+Events for paths inside directories that are *created after the watch starts*
+are included. Delivery is at-least-once; event kinds are best-effort
+(see [`FileEvent`](@ref)).
+"""
+function watch_folder(
+    f::Function,
+    dir::AbstractString = ".",
+    token::Union{Nothing,CancellationToken} = nothing;
+    ignore::Union{Nothing,Function} = nothing,
+    latency::Real = 0.01,
 )
-
-export watch_folder, watch_file
-
-function _doc_examples(folder)
-    f = folder ? "folder" : "file"
-    args = folder ? "\".\"" : "\"file.txt\""
-    """
-    # Example
-
-    ```julia
-    watch_$(f)($(args)) do event
-        @info "Something changed!" event
-    end
-    ```
-
-    You can watch a $(f) asynchronously, and interrupt the task later:
-
-    ```julia
-    watch_task = @async watch_$(f)($(args)) do event
-        @info "Something changed!" event
-    end
-
-    sleep(5)
-
-    # stop watching the $(f)
-    schedule(watch_task, InterruptException(); error=true) 
-    ```
-    """
+    _watch(f, String(abspath(dir)), token; recursive = true, ignore, latency)
 end
 
 """
-```julia
-watch_folder(f::Function, dir=".")
-```
+    watch_file(f::Function, path, token::CancellationToken)
+    watch_file(f::Function, path)
 
-Watch a folder recursively for any changes. Includes changes to file contents. A [`FileEvent`](@ref) is passed to the callback function `f`.
-
-Use the single-argument `watch_folder(dir::AbstractString=".")` to create a **blocking call** until the folder changes (like the FileWatching standard library).
-
-$(_doc_examples(true))
-
-# Differences with the FileWatching stdlib
-
--   `BetterFileWatching.watch_folder` works _recursively_, i.e. subfolders are also watched.
--   `BetterFileWatching.watch_folder` also watching file _contents_ for changes.
--   BetterFileWatching.jl is based on [Deno.watchFs](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package.
+Like [`watch_folder`](@ref), but only reports events about the single file at
+`path`. Internally the parent directory is watched (non-recursively), so this
+keeps working across the delete/recreate and atomic-save dances editors do.
 """
-function watch_folder(on_event::Function, dir::AbstractString="."; ignore_accessed::Bool=true, ignore_dotgit::Bool=true)
-    script = """
-        const watcher = Deno.watchFs($(JSON.json(dir)));
-        for await (const event of watcher) {
-            try {
-                await Deno.stdout.write(new TextEncoder().encode("\\n" + JSON.stringify(event) + "\\n"));
-            } catch(e) {
-                Deno.exit();
-            }
-        }
-    """
+function watch_file(
+    f::Function,
+    path::AbstractString,
+    token::Union{Nothing,CancellationToken} = nothing;
+    latency::Real = 0.01,
+)
+    target = String(abspath(path))
+    _watch(f, dirname(target), token;
+        recursive = false, ignore = nothing, filter_path = target, latency)
+end
 
-    outpipe = Pipe()
+"""
+    watch_folder(dir=".")
+    watch_file(path)
 
-    function on_stdout(str)
-        for s in split(str, "\n"; keepempty=false)
-            local event_raw = nothing
-            event = try
-                event_raw = JSON.parse(s)
-                T = mapFileEvent[event_raw["kind"]]
-                T(String.(event_raw["paths"]))
-            catch e
-                @warn "Unrecognized file watching event. Please report this to https://github.com/JuliaPluto/BetterFileWatching.jl" event_raw ex=(e,catch_backtrace())
-            end
-            if !(ignore_accessed && event isa Accessed)
-                if !(ignore_dotgit && event isa FileEvent && all(".git" ∈ splitpath(relpath(path, dir)) for path in event.paths))
-                    on_event(event)
-                end
-            end
+Legacy blocking API (BetterFileWatching ≤ 0.1, mirroring the FileWatching
+stdlib): block until one event occurs, and return it.
+"""
+function watch_folder(dir::AbstractString = "."; kwargs...)
+    _watch_one(watch_folder, dir; kwargs...)
+end
+
+function watch_file(path::AbstractString; kwargs...)
+    _watch_one(watch_file, path; kwargs...)
+end
+
+function _watch_one(watch::Function, path::AbstractString; kwargs...)
+    src = CancellationTokenSource()
+    event = Ref{Union{Nothing,FileEvent}}(nothing)
+    watch(path, get_token(src); kwargs...) do e
+        if event[] === nothing
+            event[] = e
+            cancel(src)
         end
     end
+    return event[]
+end
 
-    deno_task = @async run(pipeline(`$(deno()) eval $(script)`; stdout=outpipe))
-    watch_task = @async try
-        sleep(.1)
+function _watch(
+    f::Function,
+    root::String,
+    token::Union{Nothing,CancellationToken};
+    recursive::Bool,
+    ignore::Union{Nothing,Function},
+    latency::Real,
+    filter_path::Union{Nothing,String} = nothing,
+)
+    isdir(root) || throw(ArgumentError("Not a directory: $root"))
+    backend = Backend(root; recursive, ignore)
+    batch = Any[]
+    try
         while true
-            on_stdout(String(readavailable(outpipe)))
+            _collect_batch!(batch, backend.channel, token, latency)
+            for msg in batch
+                msg isa Exception && throw(msg)
+            end
+            for event in _merge_batch(batch)
+                if filter_path !== nothing
+                    paths = filter(==(filter_path), event.paths)
+                    isempty(paths) && continue
+                    event = (typeof(event))(paths)
+                end
+                f(event)
+            end
         end
     catch e
-        if !istaskdone(deno_task)
-            schedule(deno_task, e; error=true)
-        end
-        if !(e isa InterruptException)
-            showerror(stderr, e, catch_backtrace())
-        end
+        e isa OperationCanceledException || rethrow()
+    finally
+        close(backend)
     end
-    
-    try wait(watch_task) catch; end
+    return nothing
 end
 
-
-function watch_folder(dir::AbstractString="."; kwargs...)::Union{Nothing,FileEvent}
-    event = Ref{Union{Nothing,FileEvent}}(nothing)
-    task = Ref{Task}()
-    task[] = @async watch_folder(dir; kwargs...) do e
-        event[] = e
-        try
-        schedule(task[], InterruptException(); error=true) 
-        catch; end
-    end
-    wait(task[])    
-    event[]
-end
-
-
-"""
-```julia
-watch_file(f::Function, filename::AbstractString)
-```
-
-Watch a file recursively for any changes. A [`FileEvent`](@ref) is passed to the callback function `f` when a change occurs.
-
-Use the single-argument `watch_file(filename::AbstractString)` to create a **blocking call** until the file changes (like the FileWatching standard library).
-
-$(_doc_examples(false))
-
-# Differences with the FileWatching stdlib
-
--   BetterFileWatching.jl is based on [Deno.watchFs](https://doc.deno.land/builtin/stable#Deno.watchFs), made available through the [Deno_jll](https://github.com/JuliaBinaryWrappers/Deno_jll.jl) package.
-"""
-watch_file(filename::AbstractString; kwargs...) = watch_folder(filename; kwargs...)
-watch_file(f::Function, filename::AbstractString; kwargs...) = watch_folder(f, filename; kwargs...)
-
-end
+end # module

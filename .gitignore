@@ -1,3 +1,5 @@
-
 Manifest.toml
 .DS_Store
+
+# gitignored sparse clone of bun src/watcher, see LEARNINGS.md
+bun-watcher-reference/
