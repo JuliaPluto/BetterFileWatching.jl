@@ -76,11 +76,13 @@ does not scale — macOS needs FSEvents instead. Notably bun does *not* use FSEv
 
 # What we learned about Julia's capabilities (experiments)
 
-All experiment code in [`experiments/`](experiments/); results from this machine (macOS, Julia 1.12.6) and Docker `julia:1.12` (Linux aarch64).
+All experiment code is archived in [`experiments/`][exp-dir] from commit
+[`d16cb269`](https://github.com/JuliaPluto/BetterFileWatching.jl/tree/d16cb269acca6574fbab10555563deefd92e4aa6);
+results from this machine (macOS, Julia 1.12.6) and Docker `julia:1.12` (Linux aarch64).
 
 ## Experiment 1 — recursive watching is one flag away on macOS/Windows ✅
 
-[`01_recursive_uv.jl`](experiments/01_recursive_uv.jl) + [`RecursiveFolderMonitor.jl`](experiments/RecursiveFolderMonitor.jl)
+[`01_recursive_uv.jl`][exp-01] + [`RecursiveFolderMonitor.jl`][exp-recursive-folder-monitor]
 
 Julia's `FileWatching.FolderMonitor` calls `uv_fs_event_start(handle, cb, folder, 0)` — flags hardcoded to `0`
 ([FileWatching.jl:273](https://github.com/JuliaLang/julia/blob/v1.12.6/stdlib/FileWatching/src/FileWatching.jl#L273)).
@@ -101,7 +103,7 @@ same coarseness today.
 
 ## Experiment 2 — raw inotify + FDWatcher works great on Linux ✅
 
-[`02_linux_inotify.jl`](experiments/02_linux_inotify.jl)
+[`02_linux_inotify.jl`][exp-02]
 
 - `inotify_init1` / `inotify_add_watch` via `ccall` into libc: trivial, no dependencies.
 - The inotify fd is pollable, so `FileWatching.FDWatcher` (public stdlib API, wraps `uv_poll`) lets a plain
@@ -116,7 +118,7 @@ same coarseness today.
 
 ## Experiment 3 — the target API with CancellationTokens works ✅
 
-[`03_api_prototype.jl`](experiments/03_api_prototype.jl)
+[`03_api_prototype.jl`][exp-03]
 
 ```julia
 src = CancellationTokenSource()
@@ -133,7 +135,7 @@ BetterFileWatching-style `Created`/`Modified`/`Removed` structs with `.paths`.
 
 ## Experiment 4 — Linux scaling numbers ✅
 
-[`04_linux_stress.jl`](experiments/04_linux_stress.jl), tree of 5,101 directories:
+[`04_linux_stress.jl`][exp-04], tree of 5,101 directories:
 
 - watch setup (walkdir + 5,101 × `inotify_add_watch`): **~160 ms**
 - event latency warm: **~2 ms** (first event ~110 ms = Julia JIT, one-time)
@@ -162,3 +164,10 @@ BetterFileWatching-style `Created`/`Modified`/`Removed` structs with `.paths`.
   `Base.associate_julia_struct`, `Base.iolock_begin/end`, `Base.eventloop`, `Base.preserve_handle`,
   `Base._sizeof_uv_fs_event`, `Base.uv_error`, `Base._UVError`, `:jl_close_uv`, `:jl_uv_handle_data`.
   Only needed for the macOS/Windows backend. Needs CI across Julia versions (target: 1.10 LTS+).
+
+[exp-dir]: https://github.com/JuliaPluto/BetterFileWatching.jl/tree/d16cb269acca6574fbab10555563deefd92e4aa6/experiments
+[exp-01]: https://github.com/JuliaPluto/BetterFileWatching.jl/blob/d16cb269acca6574fbab10555563deefd92e4aa6/experiments/01_recursive_uv.jl
+[exp-02]: https://github.com/JuliaPluto/BetterFileWatching.jl/blob/d16cb269acca6574fbab10555563deefd92e4aa6/experiments/02_linux_inotify.jl
+[exp-03]: https://github.com/JuliaPluto/BetterFileWatching.jl/blob/d16cb269acca6574fbab10555563deefd92e4aa6/experiments/03_api_prototype.jl
+[exp-04]: https://github.com/JuliaPluto/BetterFileWatching.jl/blob/d16cb269acca6574fbab10555563deefd92e4aa6/experiments/04_linux_stress.jl
+[exp-recursive-folder-monitor]: https://github.com/JuliaPluto/BetterFileWatching.jl/blob/d16cb269acca6574fbab10555563deefd92e4aa6/experiments/RecursiveFolderMonitor.jl

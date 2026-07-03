@@ -92,6 +92,6 @@ Version 0.2 is a complete rewrite! Versions ≤ 0.1 were a small wrapper around 
 The rewrite was made with the help of AI 🤖 — Claude wrote most of the code and docs, guided by tests and review. The process:
 
 1.  We studied how [bun's file watcher](https://github.com/oven-sh/bun/tree/main/src/watcher) works on each OS, and wrote down the tricks and pitfalls worth copying in [LEARNINGS.md](LEARNINGS.md).
-2.  We validated the risky parts (recursive libuv watching, raw inotify with dynamic directory registration) in small standalone scripts, in [experiments/](experiments/).
-3.  We wrote an implementation plan: [PLAN.md](PLAN.md).
+2.  We validated the risky parts (recursive libuv watching, raw inotify with dynamic directory registration) in small standalone scripts, archived in the [`experiments/` snapshot](https://github.com/JuliaPluto/BetterFileWatching.jl/tree/d16cb269acca6574fbab10555563deefd92e4aa6/experiments).
+3.  We wrote an [implementation plan](https://github.com/JuliaPluto/BetterFileWatching.jl/blob/d16cb269acca6574fbab10555563deefd92e4aa6/PLAN.md).
 4.  The rewrite was prototyped as a separate package, and then merged back into BetterFileWatching.jl. The original test suite still passes, ensuring compatibility.
