@@ -1,6 +1,7 @@
 # BetterFileWatching.jl
 
 [![Julia tests](https://github.com/JuliaPluto/BetterFileWatching.jl/actions/workflows/Test.yml/badge.svg)](https://github.com/JuliaPluto/BetterFileWatching.jl/actions/workflows/Test.yml)
+[![codecov](https://codecov.io/gh/JuliaPluto/BetterFileWatching.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaPluto/BetterFileWatching.jl)
 
 ```julia
 watch_folder(f::Function, dir=".")
