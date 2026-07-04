@@ -1,6 +1,8 @@
 using Test
 using BetterFileWatching
-using BetterFileWatching: _merge_batch, RenameHint
+using BetterFileWatching: _merge_batch, RenameHint, _event_involves, _offer!,
+    _isbelow, _parse_buffer!, RawInotifyEvent,
+    IN_CREATE, IN_MODIFY, IN_MOVED_TO, IN_Q_OVERFLOW, IN_IGNORED, IN_DELETE_SELF
 using CancellationTokens
 
 # FSEvents streams take a moment to become active; ops right after
@@ -48,6 +50,96 @@ newroot() = realpath(mktempdir())
         @test paths_tuple(Removed("/r/a")) == ("/r/a",)
         @test paths_tuple(Other("/r")) == ("/r",)
         @test paths_tuple(Renamed("/r/a", "/r/b")) == ("/r/a", "/r/b")
+    end
+
+    @testset "event equality, hashing, involvement (unit)" begin
+        a, b, c = "/r/a", "/r/b", "/r/c"
+
+        @test Created(a) == Created(a)
+        @test Created(a) != Created(b)
+        @test Created(a) != Modified(a)          # kind matters
+        @test Renamed(a, b) == Renamed(a, b)
+        @test Renamed(a, b) != Renamed(b, a)     # direction matters
+
+        # hash is consistent with == (so events work in Sets/Dicts)
+        @test hash(Created(a)) == hash(Created(a))
+        @test hash(Created(a)) != hash(Modified(a))
+        @test hash(Renamed(a, b)) == hash(Renamed(a, b))
+        @test length(Set([Created(a), Created(a), Modified(a), Renamed(a, b)])) == 3
+
+        @test _event_involves(Created(a), a)
+        @test !_event_involves(Created(a), b)
+        @test _event_involves(Renamed(a, b), a)
+        @test _event_involves(Renamed(a, b), b)
+        @test !_event_involves(Renamed(a, b), c)
+    end
+
+    @testset "_offer! never throws (unit)" begin
+        ch = Channel{Any}(1)
+        _offer!(ch, Created("/x"))
+        @test take!(ch) == Created("/x")
+        close(ch)
+        @test _offer!(ch, Created("/y")) === nothing   # closed channel: swallowed
+    end
+
+    @testset "_isbelow (unit)" begin
+        @test _isbelow("/a", "/a")
+        @test _isbelow("/a/b", "/a")
+        @test !_isbelow("/ab", "/a")     # sibling with shared prefix
+        @test !_isbelow("/a", "/a/b")
+    end
+
+    @testset "inotify buffer parsing (unit)" begin
+        # Craft raw `struct inotify_event` buffers (host-endian, like the
+        # kernel hands them to `read`): int32 wd, uint32 mask, cookie, len,
+        # then `len` name bytes (NUL-padded).
+        function event_bytes(wd, mask, cookie, name; len = ncodeunits(name) == 0 ? 0 : ncodeunits(name) + 1)
+            io = IOBuffer()
+            write(io, Int32(wd), UInt32(mask), UInt32(cookie), UInt32(len))
+            padded = zeros(UInt8, len)
+            copyto!(padded, codeunits(name))
+            write(io, padded)
+            take!(io)
+        end
+
+        # several events in one read, with and without names, extra NUL padding
+        buf = vcat(
+            event_bytes(1, IN_CREATE, 0, "file.txt"; len = 16),  # padded like the kernel does
+            event_bytes(2, IN_MODIFY, 0, ""),                    # dir-level event: no name
+            event_bytes(3, IN_MOVED_TO, 42, "b"),
+        )
+        raws = RawInotifyEvent[]
+        _parse_buffer!(raws, buf, length(buf))
+        @test length(raws) == 3
+        @test (raws[1].wd, raws[1].mask, raws[1].name) == (1, IN_CREATE, "file.txt")
+        @test (raws[2].wd, raws[2].mask, raws[2].name) == (2, IN_MODIFY, "")
+        @test (raws[3].cookie, raws[3].name) == (42, "b")
+
+        # a name that fills `len` exactly (no NUL) must not bleed into the
+        # next event, whose header bytes contain zeros
+        buf = vcat(
+            event_bytes(1, IN_CREATE, 0, "abcd"; len = 4),
+            event_bytes(2, IN_MODIFY, 0, ""),
+        )
+        raws = RawInotifyEvent[]
+        _parse_buffer!(raws, buf, length(buf))
+        @test length(raws) == 2
+        @test raws[1].name == "abcd"
+
+        # a truncated trailing header (fewer than 16 bytes) is ignored
+        buf = vcat(event_bytes(1, IN_CREATE, 0, "x.txt"), zeros(UInt8, 10))
+        raws = RawInotifyEvent[]
+        _parse_buffer!(raws, buf, length(buf))
+        @test length(raws) == 1
+        @test raws[1].name == "x.txt"
+
+        # `len` claiming more bytes than the buffer holds: clamp, don't crash
+        buf = event_bytes(1, IN_CREATE, 0, "abcd"; len = 4)
+        buf[13:16] .= reinterpret(UInt8, [UInt32(100)])   # lie about len
+        raws = RawInotifyEvent[]
+        _parse_buffer!(raws, buf, length(buf))
+        @test length(raws) == 1
+        @test raws[1].name == "abcd"
     end
 
     @testset "batch merging (unit)" begin
@@ -157,6 +249,84 @@ newroot() = realpath(mktempdir())
             write(f, "x")
             @test await(() -> haspath(get_events(), f))
         end
+    end
+
+    @testset "directory moved out of the tree" begin
+        root = newroot()
+        outside = newroot()
+        mkpath(joinpath(root, "gone", "sub"))
+        write(joinpath(root, "gone", "sub", "f.txt"), "x")
+
+        with_watcher(root) do get_events
+            mv(joinpath(root, "gone"), joinpath(outside, "gone"))
+            @test await(() -> haspath(get_events(), joinpath(root, "gone")))
+            if Sys.islinux()
+                # an unpaired MOVED_FROM must degrade to Removed
+                @test haspath(get_events(), joinpath(root, "gone"), Removed)
+            end
+
+            # the relocated tree must no longer report events (on Linux its
+            # inode-following watches must be evicted)
+            write(joinpath(outside, "gone", "sub", "late.txt"), "x")
+            sleep(1.0)  # grace period for the stale event to (not) arrive
+            @test !haspath(get_events(), joinpath(outside, "gone", "sub", "late.txt"))
+        end
+    end
+
+    @testset "directory moved into the tree" begin
+        root = newroot()
+        outside = newroot()
+        mkpath(joinpath(outside, "pkg", "sub"))
+        write(joinpath(outside, "pkg", "sub", "inner.txt"), "x")
+
+        with_watcher(root) do get_events
+            mv(joinpath(outside, "pkg"), joinpath(root, "pkg"))
+            @test await(() -> haspath(get_events(), joinpath(root, "pkg")))
+            if Sys.islinux()
+                # contents that came along with the move are synthesized as Created
+                @test await(() -> haspath(get_events(), joinpath(root, "pkg", "sub", "inner.txt"), Created))
+            end
+
+            # the moved-in tree is actually being watched now
+            sleep(0.3)
+            f = joinpath(root, "pkg", "sub", "new.txt")
+            write(f, "x")
+            @test await(() -> haspath(get_events(), f))
+        end
+    end
+
+    @testset "backend errors on a vanished path" begin
+        # the public API checks isdir first; the backend must still fail
+        # cleanly (releasing what it acquired) if the path is gone by then
+        bad = joinpath(newroot(), "nope")
+        @test_throws Base.IOError BetterFileWatching.UVBackend(bad; recursive = false, ignore = nothing)
+    end
+
+    @testset "closing a backend twice is safe" begin
+        root = newroot()
+        backend = BetterFileWatching.Backend(root; recursive = true, ignore = nothing)
+        close(backend)
+        close(backend)   # idempotent
+        @test !isopen(backend.channel)
+    end
+
+    @testset "legacy blocking watch_file" begin
+        root = newroot()
+        target = joinpath(root, "t.txt")
+        write(target, "x")
+
+        result = Ref{Any}(nothing)
+        task = @async (result[] = watch_file(target))
+        # the blocking call gives no ready signal; poke until it returns
+        # (writes right after watch-start can be missed on macOS)
+        @test await(; timeout = 30.0) do
+            istaskdone(task) && return true
+            write(target, "poke")
+            false
+        end
+        wait(task)
+        @test result[] isa FileEvent
+        @test involves(result[], target)
     end
 
     @testset "atomic save (write tmp + rename over target)" begin
@@ -269,6 +439,44 @@ newroot() = realpath(mktempdir())
     end
 
     if Sys.islinux()
+        @testset "inotify dispatch edge cases (unit)" begin
+            root = newroot()
+            sub = joinpath(root, "sub")
+            mkpath(sub)
+            backend = BetterFileWatching.InotifyBackend(root; recursive = true, ignore = nothing)
+            try
+                # kernel queue overflow: resync and tell the consumer via Other
+                BetterFileWatching._dispatch!(backend,
+                    [RawInotifyEvent(Cint(-1), IN_Q_OVERFLOW, UInt32(0), "")])
+                @test take!(backend.channel) == Other(root)
+
+                # IN_IGNORED evicts the watch from the bookkeeping
+                wd = backend.dir_to_wd[sub]
+                BetterFileWatching._dispatch!(backend,
+                    [RawInotifyEvent(wd, IN_IGNORED, UInt32(0), "")])
+                @test !haskey(backend.wd_to_dir, wd)
+                @test !haskey(backend.dir_to_wd, sub)
+
+                # events for an evicted/unknown wd are dropped, not crashed on
+                BetterFileWatching._dispatch!(backend,
+                    [RawInotifyEvent(wd, IN_CREATE, UInt32(0), "x.txt")])
+                @test !isready(backend.channel)
+
+                # SELF events are skipped (the parent watch reports them)
+                rootwd = backend.dir_to_wd[root]
+                BetterFileWatching._dispatch!(backend,
+                    [RawInotifyEvent(rootwd, IN_DELETE_SELF, UInt32(0), "")])
+                @test !isready(backend.channel)
+
+                # registering a watch on a vanished dir is normal churn, not an error
+                missing_dir = joinpath(root, "missing")
+                @test BetterFileWatching._add_watch!(backend, missing_dir) === nothing
+                @test !haskey(backend.dir_to_wd, missing_dir)
+            finally
+                close(backend)
+            end
+        end
+
         @testset "many directories (Linux stress)" begin
             root = newroot()
             for i in 1:50, j in 1:20
