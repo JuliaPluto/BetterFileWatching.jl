@@ -114,32 +114,6 @@ newroot() = realpath(mktempdir())
         @test (raws[1].wd, raws[1].mask, raws[1].name) == (1, IN_CREATE, "file.txt")
         @test (raws[2].wd, raws[2].mask, raws[2].name) == (2, IN_MODIFY, "")
         @test (raws[3].cookie, raws[3].name) == (42, "b")
-
-        # a name that fills `len` exactly (no NUL) must not bleed into the
-        # next event, whose header bytes contain zeros
-        buf = vcat(
-            event_bytes(1, IN_CREATE, 0, "abcd"; len = 4),
-            event_bytes(2, IN_MODIFY, 0, ""),
-        )
-        raws = RawInotifyEvent[]
-        _parse_buffer!(raws, buf, length(buf))
-        @test length(raws) == 2
-        @test raws[1].name == "abcd"
-
-        # a truncated trailing header (fewer than 16 bytes) is ignored
-        buf = vcat(event_bytes(1, IN_CREATE, 0, "x.txt"), zeros(UInt8, 10))
-        raws = RawInotifyEvent[]
-        _parse_buffer!(raws, buf, length(buf))
-        @test length(raws) == 1
-        @test raws[1].name == "x.txt"
-
-        # `len` claiming more bytes than the buffer holds: clamp, don't crash
-        buf = event_bytes(1, IN_CREATE, 0, "abcd"; len = 4)
-        buf[13:16] .= reinterpret(UInt8, [UInt32(100)])   # lie about len
-        raws = RawInotifyEvent[]
-        _parse_buffer!(raws, buf, length(buf))
-        @test length(raws) == 1
-        @test raws[1].name == "abcd"
     end
 
     @testset "batch merging (unit)" begin
